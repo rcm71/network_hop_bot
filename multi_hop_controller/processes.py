@@ -8,6 +8,8 @@ import time
 import create_points as creep 
 import drone_controller as drc
 import rclpy
+import drone_server as srv
+import lemme_drive as lemme
 
 
 def main():
@@ -45,13 +47,20 @@ def main():
 	# thank god for ros concurrency
 	rclpy.init(args=None)
 	controllers = []
+	drivers = []
 	executor = rclpy.executors.MultiThreadedExecutor()
 	count = 1
 	for spot in spots:
 	    control = drc.OffboardControl(spot, count)
 	    controllers.append(control)
 	    executor.add_node(control)
+	    driver = lemme.Lemme_Drive(spot, count)
+	    drivers.append(driver)
+	    executor.add_node(driver)
 	    count += 1
+	server = srv.NetworkSimActionServer(count)
+	executor.add_node(driver)
+	executor.add_node(server)
 	try:
 	    executor.spin()
 	except KeyboardInterrupt:

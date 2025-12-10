@@ -10,7 +10,10 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        ('lib/' + package_name, [package_name+'/create_points.py',package_name+'/drone_controller.py']),
+        ('lib/' + package_name, [package_name+'/create_points.py',
+            package_name+'/drone_controller.py',
+            package_name+'/lemme_drive.py',
+            package_name+'/drone_server.py']),
 
     ],
     install_requires=['setuptools'],

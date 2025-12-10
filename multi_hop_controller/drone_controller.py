@@ -32,8 +32,6 @@
 #
 ############################################################################
 
-__author__ = "Braden Wagstaff"
-__contact__ = "braden@arkelectron.com"
 
 import rclpy
 from rclpy.node import Node
@@ -59,7 +57,7 @@ from std_msgs.msg import Bool
 class OffboardControl(Node):
 
     def __init__(self, spot, count):
-        super().__init__("minimal_publisher")
+        super().__init__(f"minimal_publisher_{count}")
         
         prefix = f"/px4_{count}"
 
@@ -369,6 +367,7 @@ class OffboardControl(Node):
 
         self.publisher_trajectory.publish(traj)
 
+    # lol rory did not do this shit fyi - rory
     # API to set a new position setpoint (x, y, z, yaw)
     def goto_position(self, x: float, y: float, z: float, yaw: float):
         """
