@@ -32,8 +32,6 @@
 #
 ############################################################################
 
-__author__ = "Braden Wagstaff"
-__contact__ = "braden@arkelectron.com"
 
 import rclpy
 from rclpy.node import Node
@@ -59,7 +57,7 @@ from std_msgs.msg import Bool
 class OffboardControl(Node):
 
     def __init__(self, spot, count):
-        super().__init__("minimal_publisher")
+        super().__init__(f"minimal_publisher_{count}")
         
         prefix = f"/px4_{count}"
 
@@ -97,6 +95,14 @@ class OffboardControl(Node):
             prefix+"/arm_message",
             self.arm_message_callback,
             qos_profile,
+        )
+        
+        # listned to where to go
+        self.pos_sub = self.create_subscription(
+            TrajectorySetpoint,
+            prefix+"/position_command",
+            self.pos_callback,
+            qos_profile=qos_profile,
         )
 
         # --- Publishers ----------------------------------------------------
@@ -165,6 +171,15 @@ class OffboardControl(Node):
     # ----------------------------------------------------------------------
     # Subscriptions callbacks
     # ----------------------------------------------------------------------
+    
+
+    def pos_callback(self, msg):
+        self.desired_position[0] = msg.position[0]
+        self.desired_position[1] = msg.position[1]
+        self.arm_message = True
+        #self.get_logger().info(f"recv destination")
+
+
 
     def arm_message_callback(self, msg: Bool):
         self.arm_message = msg.data
@@ -368,6 +383,7 @@ class OffboardControl(Node):
         traj.yawspeed = 0.0
 
         self.publisher_trajectory.publish(traj)
+
 
     # API to set a new position setpoint (x, y, z, yaw)
     def goto_position(self, x: float, y: float, z: float, yaw: float):
