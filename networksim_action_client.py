@@ -1,8 +1,7 @@
 import rclpy
 from rclpy.action import ActionClient
 from rclpy.node import Node
-
-from multi_hop_controller.action import NetworkSimulator
+from multi_hop_interfaces.action import NetworkSimulator
 
 
 class NetworkSimActionClient(Node):
@@ -13,7 +12,7 @@ class NetworkSimActionClient(Node):
 
     def send_goal(self, request):
         goal_msg = NetworkSimulator.Goal()
-        goal_msg.request = request
+        goal_msg.sender_id = request
 
         self._action_client.wait_for_server()
 
@@ -25,7 +24,7 @@ def main(args=None):
 
     action_client = NetworkSimActionClient()
 
-    future = action_client.send_goal(17)
+    future = action_client.send_goal('goal :3')
 
     rclpy.spin_until_future_complete(action_client, future)
 
