@@ -45,6 +45,8 @@ from rclpy.qos import (
     QoSHistoryPolicy,
     QoSDurabilityPolicy,
 )
+# our stuff (really just want Destination()
+import create_points as creep
 
 from px4_msgs.msg import OffboardControlMode
 from px4_msgs.msg import TrajectorySetpoint
@@ -56,7 +58,7 @@ from std_msgs.msg import Bool
 
 class OffboardControl(Node):
 
-    def __init__(self):
+    def __init__(self, spot):
         super().__init__("minimal_publisher")
 
         qos_profile = QoSProfile(
@@ -156,7 +158,7 @@ class OffboardControl(Node):
 
         # Desired position setpoint: [x, y, z, yaw]
         # Initialize to some safe default (e.g., hover at (0,0,5m,0rad))
-        self.desired_position = np.array([0.0, 0.0, 5.0, 0.0], dtype=float)
+        self.desired_position = np.array([spot.x, spot.y, 5.0, 0.0], dtype=float)
 
     # ----------------------------------------------------------------------
     # Subscriptions callbacks
