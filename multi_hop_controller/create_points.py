@@ -162,12 +162,12 @@ def create_force_graph(destinations, max_tension, max_iter, snap_radius):
                 print(f'Added new node {new_node} for {u}<->{v}')
                 new_node_count += 1
 
-    # return dict of (name, coord)
-    final_positions = {}
+    # return destinations
+    end_dest = []
     for node, coords in pos.items():
-        final_positions[node] = coords.tolist() 
+        end_dest.append(Destination(coords[0], coords[1], node))
         
-    return final_positions
+    return end_dest
 
 
 #def draw(graph, core_names, pos):      

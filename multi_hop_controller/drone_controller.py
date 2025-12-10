@@ -45,6 +45,8 @@ from rclpy.qos import (
     QoSHistoryPolicy,
     QoSDurabilityPolicy,
 )
+# our stuff (really just want Destination()
+import create_points as creep
 
 from px4_msgs.msg import OffboardControlMode
 from px4_msgs.msg import TrajectorySetpoint
@@ -56,8 +58,10 @@ from std_msgs.msg import Bool
 
 class OffboardControl(Node):
 
-    def __init__(self):
+    def __init__(self, spot, count):
         super().__init__("minimal_publisher")
+        
+        prefix = f"/px4_{count}"
 
         qos_profile = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
@@ -69,7 +73,7 @@ class OffboardControl(Node):
         # --- Subscriptions -------------------------------------------------
         self.status_sub = self.create_subscription(
             VehicleStatus,
-            "/fmu/out/vehicle_status",
+            prefix + "/fmu/out/vehicle_status",
             self.vehicle_status_callback,
             qos_profile,
         )
@@ -83,14 +87,14 @@ class OffboardControl(Node):
 
         self.attitude_sub = self.create_subscription(
             VehicleAttitude,
-            "/fmu/out/vehicle_attitude",
+            prefix+ "/fmu/out/vehicle_attitude",
             self.attitude_callback,
             qos_profile,
         )
 
         self.my_bool_sub = self.create_subscription(
             Bool,
-            "/arm_message",
+            prefix+"/arm_message",
             self.arm_message_callback,
             qos_profile,
         )
@@ -98,7 +102,7 @@ class OffboardControl(Node):
         # --- Publishers ----------------------------------------------------
         self.publisher_offboard_mode = self.create_publisher(
             OffboardControlMode,
-            "/fmu/in/offboard_control_mode",
+            prefix+"/fmu/in/offboard_control_mode",
             qos_profile,
         )
 
@@ -110,13 +114,13 @@ class OffboardControl(Node):
 
         self.publisher_trajectory = self.create_publisher(
             TrajectorySetpoint,
-            "/fmu/in/trajectory_setpoint",
+            prefix+"/fmu/in/trajectory_setpoint",
             qos_profile,
         )
 
         self.vehicle_command_publisher_ = self.create_publisher(
             VehicleCommand,
-            "/fmu/in/vehicle_command",
+            prefix+"/fmu/in/vehicle_command",
             10,
         )
 
@@ -156,7 +160,7 @@ class OffboardControl(Node):
 
         # Desired position setpoint: [x, y, z, yaw]
         # Initialize to some safe default (e.g., hover at (0,0,5m,0rad))
-        self.desired_position = np.array([0.0, 0.0, 5.0, 0.0], dtype=float)
+        self.desired_position = np.array([spot.x, spot.y, 5.0, 0.0], dtype=float)
 
     # ----------------------------------------------------------------------
     # Subscriptions callbacks
