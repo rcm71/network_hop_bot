@@ -1,0 +1,5 @@
+string sender_id
+---
+string[] drones_reached
+---
+string status
