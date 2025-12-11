@@ -54,5 +54,9 @@ make px4_sitl gz_x500
 
 
 
-5. At this point you should be fully setup to run ROS and our scripts
-6. If you are struggling to get this working, Rory can provide the image file for a working VM Setup (For ARM CPUs not x86)
+5. Navigate to ~px4_.../src and run "git clone https://github.com/mja129/multi_hop_interfaces.git"
+6. From the px4 directory you can run
+"colcon build
+source install/setup.bash
+ros2 run multi_hop_controller processes"
+7. If you are struggling to get this working, Rory can provide the image file for a working VM Setup (For ARM CPUs not x86)
