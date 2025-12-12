@@ -358,10 +358,10 @@ class OffboardControl(Node):
     # ----------------------------------------------------------------------
     def cmdloop_callback(self):
         # Only publish if the vehicle is in a sane state
-        if (not self.flightCheck or
-            self.arm_state != VehicleStatus.ARMING_STATE_ARMED or
-            self.failsafe):
-            return
+        # if (not self.flightCheck or
+        #     self.arm_state != VehicleStatus.ARMING_STATE_ARMED or
+        #     self.failsafe):
+        #     return
 
         # 1) Publish OffboardControlMode indicating position control
         offboard_msg = OffboardControlMode()
