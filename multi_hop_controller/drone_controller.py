@@ -174,9 +174,13 @@ class OffboardControl(Node):
     
 
     def pos_callback(self, msg):
-        self.desired_position[0] = msg.position[0]
-        self.desired_position[1] = msg.position[1]
-        self.desired_position[2] = -msg.position[2]
+        x = msg.position[0]
+        y = msg.position[1]
+        z = msg.position[2]
+        yaw = self.desired_position[3]
+        
+        self.goto_position(x, y, z, yaw)
+        
         self.arm_message = True
         self.get_logger().info(f"pos_cmd: {msg.position}")
 
