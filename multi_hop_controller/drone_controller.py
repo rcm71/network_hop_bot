@@ -77,11 +77,11 @@ class OffboardControl(Node):
         )
 
         # Velocity teleop removed for position-based control
-        # self.offboard_velocity_sub = self.create_subscription(
-        #     Twist,
-        #     '/offboard_velocity_cmd',
-        #     self.offboard_velocity_callback,
-        #     qos_profile)
+        self.offboard_velocity_sub = self.create_subscription(
+            Twist,
+            '/offboard_velocity_cmd',
+            self.offboard_velocity_callback,
+            qos_profile)
 
         self.attitude_sub = self.create_subscription(
             VehicleAttitude,
@@ -113,10 +113,10 @@ class OffboardControl(Node):
         )
 
         # Velocity publisher not used in position control version
-        # self.publisher_velocity = self.create_publisher(
-        #     Twist,
-        #     '/fmu/in/setpoint_velocity/cmd_vel_unstamped',
-        #     qos_profile)
+        self.publisher_velocity = self.create_publisher(
+            Twist,
+            '/fmu/in/setpoint_velocity/cmd_vel_unstamped',
+            qos_profile)
 
         self.publisher_trajectory = self.create_publisher(
             TrajectorySetpoint,
@@ -150,7 +150,7 @@ class OffboardControl(Node):
         self.arm_state = VehicleStatus.ARMING_STATE_ARMED
 
         # In position-control version we do not use velocity commands
-        # self.velocity = Vector3()
+        self.velocity = Vector3()
 
         self.yaw = 0.0          # commanded yaw
         self.trueYaw = 0.0      # measured yaw from VehicleAttitude
@@ -357,18 +357,13 @@ class OffboardControl(Node):
     # Offboard command loop - position control version
     # ----------------------------------------------------------------------
     def cmdloop_callback(self):
-        # Only publish if the vehicle is in a sane state
-        # if (not self.flightCheck or
-        #     self.arm_state != VehicleStatus.ARMING_STATE_ARMED or
-        #     self.failsafe):
-        #     return
 
         # 1) Publish OffboardControlMode indicating position control
         offboard_msg = OffboardControlMode()
         offboard_msg.timestamp = int(Clock().now().nanoseconds / 1000)
         offboard_msg.position = True
-        offboard_msg.velocity = False
-        offboard_msg.acceleration = False
+        offboard_msg.velocity = True
+        offboard_msg.acceleration = True
         self.publisher_offboard_mode.publish(offboard_msg)
 
         # 2) Publish a TrajectorySetpoint with desired position + yaw
