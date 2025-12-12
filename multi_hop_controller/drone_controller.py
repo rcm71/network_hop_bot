@@ -178,7 +178,7 @@ class OffboardControl(Node):
         self.desired_position[1] = msg.position[1]
         self.desired_position[2] = -msg.position[2]
         self.arm_message = True
-        #self.get_logger().info(f"recv destination")
+        self.get_logger().info(f"pos_cmd: {msg.position}")
 
 
 
@@ -395,10 +395,9 @@ class OffboardControl(Node):
         actually publishes it periodically while offboardMode is True.
         """
         #fix for falling down need to convert to negative
-        z_ned = -z_up
-        self.desired_position = np.array([x, y, z, yaw], dtype=float)
+        self.desired_position = np.array([x, y, -z, yaw], dtype=float)
         self.get_logger().info(
-            f"New position setpoint: x={x}, y={y}, z={z}, yaw={yaw}"
+            f"New position setpoint: x={x}, y={y}, z={-z}, yaw={yaw}"
         )
 
 
