@@ -52,6 +52,7 @@ from px4_msgs.msg import VehicleStatus
 from px4_msgs.msg import VehicleAttitude
 from px4_msgs.msg import VehicleCommand
 from std_msgs.msg import Bool
+from geometry_msgs.msg import Twist, Vector3
 
 
 class OffboardControl(Node):
@@ -60,6 +61,13 @@ class OffboardControl(Node):
         super().__init__(f"minimal_publisher_{count}")
         
         prefix = f"/px4_{count}"
+
+
+        self.offboard_behavior = None
+        self.hover_x = 0.0
+        self.hover_y = 0.0
+        self.hover_z = 0.0
+        self.hover_yaw = 0.0
 
         qos_profile = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
@@ -200,32 +208,34 @@ class OffboardControl(Node):
             case "IDLE":
                 if self.flightCheck and self.arm_message:
                     self.current_state = "ARMING"
-                    self.get_logger().info("Arming")
-
+                    self.get_logger().info("Transition: IDLE → ARMING")
+                
             case "ARMING":
-                if not self.flightCheck:
+                if not self.flightCheck or self.failsafe:
                     self.current_state = "IDLE"
-                    self.get_logger().info("Arming, Flight Check Failed")
-                elif (
-                    self.arm_state == VehicleStatus.ARMING_STATE_ARMED
-                    and self.myCnt > 10
-                ):
+                    self.get_logger().info("ARMING failed → IDLE")
+                    return
+
+                self.arm()
+
+                if self.arm_state == VehicleStatus.ARMING_STATE_ARMED:
                     self.current_state = "TAKEOFF"
-                    self.get_logger().info("Arming, Takeoff")
-                self.arm()  # send arm command
+                    self.get_logger().info("Transition: ARMING → TAKEOFF")
 
             case "TAKEOFF":
-                if not self.flightCheck:
+                if not self.flightCheck or self.failsafe:
                     self.current_state = "IDLE"
-                    self.get_logger().info("Takeoff, Flight Check Failed")
-                elif (
-                    self.nav_state
-                    == VehicleStatus.NAVIGATION_STATE_AUTO_TAKEOFF
-                ):
-                    self.current_state = "LOITER"
-                    self.get_logger().info("Takeoff, Loiter")
-                self.arm()       # keep sending arm command
-                self.take_off()  # send takeoff command
+                    self.get_logger().info("TAKEOFF failed → IDLE")
+                    return
+
+                self.arm()
+                self.take_off()
+
+                if self.nav_state == VehicleStatus.NAVIGATION_STATE_AUTO_LOITER:
+                    self.current_state = "OFFBOARD"
+                    self.enter_offboard()
+                    self.start_hover()
+                    self.get_logger().info("Transition: LOITER → OFFBOARD")
 
             # Waits while taking off. Once LOITER, switch to OFFBOARD.
             case "LOITER":
@@ -242,14 +252,20 @@ class OffboardControl(Node):
 
             case "OFFBOARD":
                 if (
-                    (not self.flightCheck)
+                    not self.flightCheck
                     or self.arm_state != VehicleStatus.ARMING_STATE_ARMED
                     or self.failsafe
                 ):
                     self.current_state = "IDLE"
-                    self.get_logger().info("Offboard, Flight Check Failed")
-                else:
-                    self.state_offboard()
+                    self.offboardMode = False
+                    self.get_logger().info("OFFBOARD lost → IDLE")
+                    return
+
+                # Healthy OFFBOARD → keep controlling
+                if self.offboard_behavior is None:
+                    self.offboard_behavior = "HOVER"
+
+            
 
         # If disarmed, require a new arm trigger
         if self.arm_state != VehicleStatus.ARMING_STATE_ARMED:
@@ -262,7 +278,7 @@ class OffboardControl(Node):
 
         self.myCnt += 1
 
-    def state_offboard(self):
+    def enter_offboard(self):
         self.myCnt = 0
         # VEHICLE_CMD_DO_SET_MODE: param1 = base mode, param2 = custom mode
         self.publish_vehicle_command(
@@ -271,6 +287,17 @@ class OffboardControl(Node):
             6.0,
         )
         self.offboardMode = True
+
+    def state_offboard(self):
+        # Always publish offboard heartbeat
+        self.publish_offboard_control_mode()
+
+        if self.offboard_behavior == "HOVER":
+            self.publish_hover_setpoint()
+        elif self.offboard_behavior == "GOTO":
+            self.publish_goto_setpoint()
+        elif self.offboard_behavior == "LAND":
+            self.publish_land_setpoint()
 
     # Arms the vehicle
     def arm(self):
@@ -362,8 +389,8 @@ class OffboardControl(Node):
         offboard_msg = OffboardControlMode()
         offboard_msg.timestamp = int(Clock().now().nanoseconds / 1000)
         offboard_msg.position = True
-        offboard_msg.velocity = True
-        offboard_msg.acceleration = True
+        offboard_msg.velocity = False
+        offboard_msg.acceleration = False
         self.publisher_offboard_mode.publish(offboard_msg)
 
         # 2) Publish a TrajectorySetpoint with desired position + yaw
@@ -401,8 +428,41 @@ class OffboardControl(Node):
         """
         #fix for falling down need to convert to negative
         self.desired_position = np.array([x, y, -z, yaw], dtype=float)
+        self.offboard_behavior = "GOTO"
         self.get_logger().info(
             f"New position setpoint: x={x}, y={y}, z={-z}, yaw={yaw}"
+        )
+
+    def start_hover(self):
+        # self.hover_position = self.current_position
+        self.offboard_behavior = "HOVER"
+
+    def publish_hover_setpoint(self):
+        self.publish_position_setpoint(
+        x=self.hover_position.x,
+        y=self.hover_position.y,
+        z=self.hover_position.z,
+        yaw=self.hover_yaw
+    )
+
+    def publish_goto_setpoint(self):
+        if self.desired_position is None:
+            return
+
+        self.publish_position_setpoint(
+            x=self.desired_position[0],
+            y=self.desired_position[1],
+            z=self.desired_position[2],
+            yaw=self.desired_position[3],
+    )
+
+    def publish_land_setpoint(self):
+        z = self.current_position.z + 0.05  # descend slowly in NED
+        self.publish_position_setpoint(
+            x=self.current_position.x,
+            y=self.current_position.y,
+            z=z,
+            yaw=self.current_yaw
         )
 
 
