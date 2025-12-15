@@ -571,22 +571,35 @@
 __author__ = "Jaeyoung Lim"
 __contact__ = "jalim@ethz.ch"
 
-import rclpy
-import numpy as np
-from rclpy.node import Node
-from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
+import rclpy # ROS 2 Python client library
+import numpy as np # Used for math (cos, sin) to generate circular trajectories.
+from rclpy.node import Node # Imports the base ROS 2 node class. 
+                            # Your class must inherit from this to:
+                                # create publishers/subscribers
+                                # create timers
+                                # access ROS clocks
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy # PX4 requires specific QoS or messages silently won’t arrive.
 
-from px4_msgs.msg import OffboardControlMode
-from px4_msgs.msg import TrajectorySetpoint
-from px4_msgs.msg import VehicleStatus
+from px4_msgs.msg import OffboardControlMode # tells PX4 what kind of control you are sending (position / velocity / etc)
+from px4_msgs.msg import TrajectorySetpoint # the actual position setpoint PX4 should fly to
+from px4_msgs.msg import VehicleStatus # PX4’s state machine feedback (armed, nav mode, failsafe, etc)
+from px4_msgs.msg import VehicleCommand # Import Vehicle commands
 
 
 class OffboardControl(Node):
 
+    # Initializes the ROS node
+    # Node name = minimal_publisher
+    # This name appears in ros2 node list
     def __init__(self):
         super().__init__('minimal_publisher')
 
-                # QoS profiles
+        # QoS profiles
+
+        # Publisher QoS
+        # BEST_EFFORT means that PX4 does not retry messages → this matches PX4 behavior
+        # TRANSIENT_LOCAL means that PX4 will receive the last message even if it subscribes late
+        # KEEP_LAST, depth=0 means that they store only the most recent sample
         qos_profile_pub = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
             durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
@@ -594,6 +607,8 @@ class OffboardControl(Node):
             depth=0
         )
 
+        # Subscriber Qos
+        # only new thing is VOLATILE which means only receive new messages
         qos_profile_sub = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
             durability=QoSDurabilityPolicy.VOLATILE,
@@ -601,57 +616,134 @@ class OffboardControl(Node):
             depth=0
         )
 
+        # Subscribes to PX4 vehicle status.
+        # This gives you navigation mode, arming state, failsafe state
         self.status_sub = self.create_subscription(
             VehicleStatus,
             'fmu/out/vehicle_status',
             self.vehicle_status_callback,
             qos_profile_sub)
+
+        # Only difference from the last one is this is legacy / compatibility — some PX4 versions publish _v1.
         self.status_sub = self.create_subscription(
             VehicleStatus,
             'fmu/out/vehicle_status_v1',
             self.vehicle_status_callback,
-            qos_profile_sub)
-            
-        self.publisher_offboard_mode = self.create_publisher(OffboardControlMode, 'fmu/in/offboard_control_mode', qos_profile_pub)
-        self.publisher_trajectory = self.create_publisher(TrajectorySetpoint, 'fmu/in/trajectory_setpoint', qos_profile_pub)
+            qos_profile_sub
+        )
+
+        # This is the OFFBOARD heartbeat.
+        # Publishes OffboardControlMode to PX4.
+        # If this stops → PX4 exits OFFBOARD → drone falls.
+        self.publisher_offboard_mode = self.create_publisher(
+            OffboardControlMode, 
+            'fmu/in/offboard_control_mode', 
+            qos_profile_pub
+        )
+
+        # Publishes the actual position setpoint PX4 flies to.
+        self.publisher_trajectory = self.create_publisher(
+            TrajectorySetpoint, 
+            'fmu/in/trajectory_setpoint', 
+            qos_profile_pub
+        )
+        
+        # Creates a timer that calls cmdloop_callback() at 50 Hz.
+        # PX4 requires OffboardControlMode at > 2 Hz, and TrajectorySetpoint at > 2 Hz
         timer_period = 0.02  # seconds
         self.timer = self.create_timer(timer_period, self.cmdloop_callback)
         self.dt = timer_period
+
+
         self.declare_parameter('radius', 10.0)
         self.declare_parameter('omega', 5.0)
         self.declare_parameter('altitude', 5.0)
+
+        # Stores PX4 state machine values. Initially set to defaults
         self.nav_state = VehicleStatus.NAVIGATION_STATE_MAX
         self.arming_state = VehicleStatus.ARMING_STATE_DISARMED
+
         # Note: no parameter callbacks are used to prevent sudden inflight changes of radii and omega
         # which would result in large discontinuities in setpoints
+        # Internal trajectory state:
+        # theta = angle around circle, others copied from parameters
         self.theta = 0.0
         self.radius = self.get_parameter('radius').value
         self.omega = self.get_parameter('omega').value
         self.altitude = self.get_parameter('altitude').value
 
+    # Called every time PX4 publishes VehicleStatus.
     def vehicle_status_callback(self, msg):
         # TODO: handle NED->ENU transformation
         print("NAV_STATUS: ", msg.nav_state)
         print("  - offboard status: ", VehicleStatus.NAVIGATION_STATE_OFFBOARD)
+        # Stores PX4 state so the control loop can react.
         self.nav_state = msg.nav_state
         self.arming_state = msg.arming_state
 
+    # Takes off to a fixed altitude (meters)
+    def take_off(self):
+        # param1 = minimum pitch, param7 = altitude (m)
+        self.publish_vehicle_command(
+            VehicleCommand.VEHICLE_CMD_NAV_TAKEOFF,
+            param1=1.0,
+            param7=5.0,
+        )
+        self.get_logger().info("Takeoff command sent")
+
+    def enter_offboard(self):
+        self.myCnt = 0
+        # VEHICLE_CMD_DO_SET_MODE: param1 = base mode, param2 = custom mode
+        self.publish_vehicle_command(
+            VehicleCommand.VEHICLE_CMD_DO_SET_MODE,
+            1.0,
+            6.0,
+        )
+        self.offboardMode = True
+
+    # Arms the vehicle
+    def arm(self):
+        self.publish_vehicle_command(
+            VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM,
+            1.0,
+        )
+        self.get_logger().info("Arm command sent")
+
+    
+
+
+
+    # The heart of OFFBOARD
     def cmdloop_callback(self):
+
         # Publish offboard control modes
+        # Most important block in the file
+        # Every thick it tells PX4: “I am controlling POSITION” refreshes OFFBOARD heartbeat
+        # Without this: PX4 exits OFFBOARD, motors idle, and gravity wins
         offboard_msg = OffboardControlMode()
         offboard_msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
         offboard_msg.position=True
         offboard_msg.velocity=False
         offboard_msg.acceleration=False
         self.publisher_offboard_mode.publish(offboard_msg)
+        self.arm()
+        self.take_off()
+        self.enter_offboard()
+
+        # Only send trajectory if PX4 confirms that vehicle is armed, vehicle is already in OFFBOARD
+        # This prevents: publishing setpoints too early, PX4 rejecting commands
         if (self.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD and self.arming_state == VehicleStatus.ARMING_STATE_ARMED):
 
+            # Generates a circle in XY, fixed altitude.
             trajectory_msg = TrajectorySetpoint()
             trajectory_msg.position[0] = self.radius * np.cos(self.theta)
             trajectory_msg.position[1] = self.radius * np.sin(self.theta)
             trajectory_msg.position[2] = -self.altitude
+
+            # Sends the setpoint to PX4. PX4 tracks it using position controller.
             self.publisher_trajectory.publish(trajectory_msg)
 
+            # Advances the angle → smooth circular motion.
             self.theta = self.theta + self.omega * self.dt
 
 
