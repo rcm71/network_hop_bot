@@ -2,7 +2,10 @@
 
 VM Setup Procedure:
 1. Install Ubuntu 22.04 on your preferred VM (Cannot be any other version)
-2. Run the bash script shown below
+2. ```sudo apt update```
+3. ```sudo apt upgrade -y```
+4. ```reboot```
+5. Run the bash script shown below
 
 
 
