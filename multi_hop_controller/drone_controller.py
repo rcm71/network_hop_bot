@@ -754,19 +754,19 @@ class OffboardControl(Node):
 
         # Only send trajectory if PX4 confirms that vehicle is armed, vehicle is already in OFFBOARD
         # This prevents: publishing setpoints too early, PX4 rejecting commands
-        if (self.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD and self.arming_state == VehicleStatus.ARMING_STATE_ARMED):
+        # if (self.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD and self.arming_state == VehicleStatus.ARMING_STATE_ARMED):
 
-            # Generates a circle in XY, fixed altitude.
-            trajectory_msg = TrajectorySetpoint()
-            trajectory_msg.position[0] = self.radius * np.cos(self.theta)
-            trajectory_msg.position[1] = self.radius * np.sin(self.theta)
-            trajectory_msg.position[2] = -self.altitude
+        # Generates a circle in XY, fixed altitude.
+        trajectory_msg = TrajectorySetpoint()
+        trajectory_msg.position[0] = self.radius * np.cos(self.theta)
+        trajectory_msg.position[1] = self.radius * np.sin(self.theta)
+        trajectory_msg.position[2] = -self.altitude
 
-            # Sends the setpoint to PX4. PX4 tracks it using position controller.
-            self.publisher_trajectory.publish(trajectory_msg)
+        # Sends the setpoint to PX4. PX4 tracks it using position controller.
+        self.publisher_trajectory.publish(trajectory_msg)
 
-            # Advances the angle → smooth circular motion.
-            self.theta = self.theta + self.omega * self.dt
+        # Advances the angle → smooth circular motion.
+        self.theta = self.theta + self.omega * self.dt
 
     def state_machine_callback(self):
 
