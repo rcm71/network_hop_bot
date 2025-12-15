@@ -693,6 +693,10 @@ class OffboardControl(Node):
         self.arming_state = msg.arming_state
         self.flightCheck = msg.pre_flight_checks_pass
         self.failsafe = msg.failsafe
+        self.get_logger().info(
+            f"STATUS: nav={msg.nav_state} arm={msg.arming_state} "
+            f"preflight={msg.pre_flight_checks_pass} failsafe={msg.failsafe}"
+)
 
     # Takes off to a fixed altitude (meters)
     def take_off(self):
